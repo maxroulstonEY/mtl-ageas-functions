@@ -2,11 +2,10 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
-
-## test git commit 1
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Database insert function processed a request.')
@@ -17,12 +16,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type'
     }
-
+    
     try:
         # Parse the JSON body from the request
         request_body = req.get_json()
 
-    except ValueError as e:
+    except KeyError:
         return {
             'statusCode': 400,
             'headers': headers,
@@ -31,32 +30,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             })
         }
     
-    case_id = request_body['case_id']
-    update_user = request_body['update_user']   
+    # Extract parameters from the request body
+    completed = True
 
-    columns = []
-    values = []
-    sql_params = {}
+    case_id = request_body.get('case_id')
 
-    # Iterate over the items in the request_body to construct the SQL statement
-    for key, value in request_body.items():
-        columns.append(key)
-        values.append('%s')  # Use placeholders for the values
-        sql_params[key] = value  # Prepare the parameters for the SQL execution
-
-
-    if request_body['address_type'] == 'Policy Holder':
-        table_name = 'mtl.ADDRESS'
-    elif request_body['address_type'] == 'Executor':
-        table_name = 'mtl.DECEASED_ADDRESS'
-    elif request_body['address_type'] == 'Informant':
-       table_name = 'mtl.DECEASED_ADDRESS'
-
-
-    # Retrieve the secret containing the database credentials
+        # Retrieve the secret containing the database credentials
     # For Azure, you would use Azure Key Vault to store and retrieve secrets
     credential = DefaultAzureCredential()
-    key_vault_url = "https://mtl-backend.vault.azure.net/"
+    key_vault_url = os.getenv('key_vault_name')
     secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 
@@ -74,29 +56,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         with psycopg2.connect(conn_string) as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                ADDRESS_CHECK = f"SELECT * FROM {table_name} WHERE case_id = %s AND END_TS = '9999-12-31 00:00:00'"
-                cursor.execute(ADDRESS_CHECK, (case_id,))
-                results = cursor.fetchall()
-
-                if len(results) == 0:
-                    INSERT_NEW_ADDRESS = f"INSERT INTO {table_name} ({', '.join(columns)},START_TS,END_TS) VALUES ({', '.join(values)},CURRENT_TIMESTAMP,'9999-12-31 00:00:00')"
-                    cursor.execute(INSERT_NEW_ADDRESS, (tuple(sql_params.values())))
-
-                elif len(results) > 0:
-                    UPDATE_EXISTING = f"UPDATE {table_name} SET END_TS = CURRENT_TIMESTAMP, UPDATE_USER = %s, WHERE case_id = %s AND END_TS = '9999-12-31 00:00:00'"
-                    cursor.execute(UPDATE_EXISTING, (update_user, case_id,))
-
-                    INSERT_NEW_ADDRESS = f"INSERT INTO {table_name} ({', '.join(columns)},START_TS, END_TS) VALUES ({', '.join(values)},CURRENT_TIMESTAMP,'9999-12-31 00:00:00')"
-                    cursor.execute(INSERT_NEW_ADDRESS, (tuple(sql_params.values())))
+                # Construct the SQL statement using parameters from the request body
+                sql = f"UPDATE mtl.master_payment SET payment_completed_by_analyst = %s, payment_completed_by_analyst_date = CURRENT_DATE WHERE case_id = %s"
+                cursor.execute(sql, (completed, case_id))
 
 
-            # Commit is called automatically when the block exits if no exceptions occurred
-   
+
         # Return a success response
         return func.HttpResponse(
-            body=json.dumps({"message": "Update executed for all cases."}),
+            body=json.dumps({"message": "Update executed for {case_id}."}),
             status_code=200,
-            headers=headers   
+            headers={'Content-Type': 'application/json'}   
         )
         
     except Exception as e:
@@ -107,5 +77,5 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             body=json.dumps({"error": str(e)}),
             status_code=500,
-            headers=headers   
+            headers={'Content-Type': 'application/json'}      
         )

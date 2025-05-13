@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
@@ -42,7 +43,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Retrieve the secret containing the database credentials
     # For Azure, you would use Azure Key Vault to store and retrieve secrets
     credential = DefaultAzureCredential()
-    key_vault_url = "https://mtl-backend.vault.azure.net/"
+    key_vault_url = os.getenv('key_vault_name')
     secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 
@@ -80,9 +81,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     sql_statement = f"""
                                     UPDATE mtl.contact_queries SET end_ts = NOW() WHERE query_id = %s AND end_ts = '9999-12-31';
 
-                                    INSERT INTO mtl.CONTACT_QUERIES (case_id, claim_reference, QUERY_TYPE, QUERY_DESCRIPTION, closed_date, closed_user, query_id, query_status, end_ts, audit_log) 
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'CLOSED', '9999-12-31', 'Close Query');"""
-                    cursor.execute(sql_statement, (QUERY_ID, CASE_ID, CLAIM_REF, QUERY_TYPE, QUERY_DESC, QUERY_DATE, userEmail, QUERY_ID))
+                                    INSERT INTO mtl.CONTACT_QUERIES (case_id, claim_reference, QUERY_TYPE, QUERY_DESCRIPTION, closed_date, closed_user, query_id, query_status, end_ts, audit_log, update_user) 
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'CLOSED', '9999-12-31', 'Close Query', %s);"""
+                    cursor.execute(sql_statement, (QUERY_ID, CASE_ID, CLAIM_REF, QUERY_TYPE, QUERY_DESC, QUERY_DATE, userEmail, QUERY_ID, userEmail))
 
                 
             

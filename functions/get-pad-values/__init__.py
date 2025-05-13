@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from datetime import date, datetime
 from azure.identity import DefaultAzureCredential
@@ -26,7 +27,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         credential = DefaultAzureCredential()
-        key_vault_url = "https://mtl-backend.vault.azure.net/"
+        key_vault_url = os.getenv('key_vault_name')
         secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 
@@ -45,7 +46,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         conn = psycopg2.connect(conn_string)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        sql_statement = "SELECT * FROM mtl.PAD_VALUES"
+        sql_statement = "SELECT * FROM mtl.METADATA_PAD_VALUES"
 
         cursor.execute(sql_statement)
         

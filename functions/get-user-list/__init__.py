@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from datetime import date, datetime
 from azure.identity import DefaultAzureCredential
@@ -27,7 +28,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Retrieve the secret containing the database credentials
         # For Azure, you would use Azure Key Vault to store and retrieve secrets
         credential = DefaultAzureCredential()
-        key_vault_url = "https://mtl-vault-pp.vault.azure.net/"
+        key_vault_url = os.getenv('key_vault_name')
         secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 
@@ -80,3 +81,4 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             headers=headers      
         )
 
+ 

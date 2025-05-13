@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
@@ -29,7 +30,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     # Retrieve the secret containing the database credentials
     credential = DefaultAzureCredential()
-    key_vault_url = "https://mtl-backend.vault.azure.net/"
+    key_vault_url = os.getenv('key_vault_name')
     secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
     db_host = secret_client.get_secret('db-host').value
@@ -48,12 +49,26 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     ctcname = update_case['ctcname']
                     case_selection_criteria_ctc = update_case['case_selection_criteria_ctc']
                     case_id = update_case['case_id']
+                    email = update_case['email']
+
                     UPDATE_STATUS_IN_CASE_ALLOC = """
                     UPDATE mtl.CASE_ALLOCATION
                     SET assignedtoctc = %s, assignedtoctcname = %s, case_selection_criteria_ctc = %s
                     WHERE case_id = %s
                     """
+
+                    UPDATE_CASE_TRACKER = """
+                        INSERT INTO mtl.case_tracker (case_id, state, sub_state, audit_log, update_user, end_ts)
+                        SELECT case_id, 'Review', 'CTC Allocated', 'FUNCTION: post-ctc-assigned-cases', %s, '9999-12-31 00:00:00' 
+                        FROM mtl.case_tracker
+                        WHERE case_id = %s AND end_ts = '9999-12-31 00:00:00' AND sub_state = 'Case QA Completed';
+
+                        UPDATE mtl.case_tracker SET end_ts = CURRENT_TIMESTAMP 
+                        WHERE case_id = %s AND end_ts = '9999-12-31 00:00:00' AND sub_state = 'Case QA Completed';
+                        """
+
                     cursor.execute(UPDATE_STATUS_IN_CASE_ALLOC, (ctcemail, ctcname, case_selection_criteria_ctc, case_id))
+                    cursor.execute(UPDATE_CASE_TRACKER, (email, case_id, case_id,))
                     conn.commit()
 
         return func.HttpResponse(

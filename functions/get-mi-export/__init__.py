@@ -6,6 +6,7 @@ import io
 from datetime import datetime
 from psycopg2.extras import RealDictCursor
 import psycopg2
+import os
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from azure.storage.blob import BlobServiceClient
@@ -33,7 +34,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         credential = DefaultAzureCredential()
-        key_vault_url = "https://mtl-backend.vault.azure.net/"
+        key_vault_url = os.getenv('key_vault_name')
         secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
         # Retrieve the secret containing the database credentials
@@ -105,7 +106,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         new_file_key = f'{mi_file_name}_{formatted_datetime}.xlsx'
 
         # Upload the new Excel file to Azure Blob Storage
-        blob_service_client = BlobServiceClient.from_connection_string(secret_client.get_secret('storage-connection-string').value)
+        blob_service_client = BlobServiceClient.from_connection_string(secret_client.get_secret('DataConnectionString').value)
         blob_client = blob_service_client.get_blob_client(container='mi-exports', blob=new_file_key)
         blob_client.upload_blob(excel_buffer, overwrite=True)
 

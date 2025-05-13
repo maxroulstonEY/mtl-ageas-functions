@@ -8,7 +8,7 @@ from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Database post-fr-bulk-allocation function processed a request.')
+    logging.info('Database post-assigned-payments function processed a request.')
 
     # Check if the request method is POST
     if req.method != 'POST':
@@ -45,30 +45,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         with psycopg2.connect(conn_string) as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 for update_case in request_body:
-                    qaemail = update_case['qaemail']
-                    qaname = update_case['qaname']
-                    case_selection_criteria_qa = update_case['case_selection_criteria_qa']
+                    print(update_case)
+                    update_user = update_case['assignedtoanalyst']
+                    #analystname = update_case['analystname']
                     case_id = update_case['case_id']
-                    email = update_case['email']
 
-                    UPDATE_STATUS_IN_CASE_ALLOC = """
-                    UPDATE mtl.CASE_ALLOCATION
-                    SET assignedtoqa = %s, assignedtoqaname = %s, case_selection_criteria_qa = %s
+                    UPDATE_ANALYST_IN_PAYMENT_ALLOC = """
+                    UPDATE mtl.MASTER_PAYMENT
+                    SET assignedtoanalyst = %s
                     WHERE case_id = %s
                     """
-                    
-                    UPDATE_CASE_TRACKER = """
-                        INSERT INTO mtl.case_tracker (case_id, state, sub_state, audit_log, update_user, end_ts)
-                        SELECT case_id, 'Review', 'QA Allocated', 'FUNCTION: post-qa-assigned-cases', %s, '9999-12-31 00:00:00' 
-                        FROM mtl.case_tracker
-                        WHERE case_id = %s AND end_ts = '9999-12-31 00:00:00' AND sub_state = 'Case QC Completed';
-
-                        UPDATE mtl.case_tracker SET end_ts = CURRENT_TIMESTAMP 
-                        WHERE case_id = %s AND end_ts = '9999-12-31 00:00:00' AND sub_state = 'Case QC Completed';
-                        """
-
-                    cursor.execute(UPDATE_STATUS_IN_CASE_ALLOC, (qaemail, qaname, case_selection_criteria_qa, case_id))
-                    cursor.execute(UPDATE_CASE_TRACKER, (email, case_id, case_id,))
+                    cursor.execute(UPDATE_ANALYST_IN_PAYMENT_ALLOC, (update_user, case_id))
                     conn.commit()
 
         return func.HttpResponse(
@@ -81,9 +68,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.error(f"Error: {str(e)}")
         return func.HttpResponse(
             body=json.dumps({"error": "An error occurred while updating the database."}),
-            ##body=json.dumps([{"error": str(e)}, {"qaemail": f"{qaemail}"},{"qaname": f"{qaname}"},{"case_selection_criteria_qa": f"{case_selection_criteria_qa}"}, {"case_id": f"{case_id}"}]),
-
             status_code=500,
             headers={'Content-Type': 'application/json'}
         )
-

@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
@@ -39,7 +40,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     # Retrieve the secret containing the database credentials
     credential = DefaultAzureCredential()
-    key_vault_url = "https://mtl-backend.vault.azure.net/"
+    key_vault_url = os.getenv('key_vault_name')
     secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
     db_host = secret_client.get_secret('db-host').value

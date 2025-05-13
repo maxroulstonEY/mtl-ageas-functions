@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
@@ -37,7 +38,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     # Retrieve the secret containing the database credentials
     # For Azure, you would use Azure Key Vault to store and retrieve secrets
     credential = DefaultAzureCredential()
-    key_vault_url = "https://mtl-backend.vault.azure.net/"
+    key_vault_url = os.getenv('key_vault_name')
     secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 
@@ -64,9 +65,69 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                             
                         elif ENGINEER_APPROVAL == 'rejected':
                             CASE_ID = request_body['case_id']
-                            sql_statement_rejected = f"UPDATE mtl.CASE_ALLOCATION SET casestatusanalyst = 'NEW', casestatusqc = NULL, engineer_referral = 'Rejected' WHERE case_id = %s"
-                            cursor.execute(sql_statement_rejected, (CASE_ID,))
+                            UPDATE_USER = request_body['update_user']
+                            # Fetch who submitted the engineer referral
+                            cursor.execute("SELECT assignedtoqc FROM mtl.case_allocation WHERE case_id = %s", (CASE_ID,))
+                            result = cursor.fetchone()
 
+                            if result and result['assignedtoqc']:
+                                # QC submitted the referral
+                                sql_statement_rejected = """
+                                    UPDATE mtl.case_allocation
+                                    SET 
+                                        casestatusqc = 'IN_PROGRESS',
+                                        engineer_referral = 'Rejected'
+                                    WHERE case_id = %s
+                                """
+                                cursor.execute(sql_statement_rejected, (CASE_ID,))
+
+                                # Step 1: Close current case tracker record
+                                sql_close_tracker = """
+                                    UPDATE mtl.case_tracker 
+                                    SET end_ts = CURRENT_TIMESTAMP 
+                                    WHERE case_id = %s 
+                                    AND end_ts = '9999-12-31 00:00:00'
+                                """
+                                cursor.execute(sql_close_tracker, (CASE_ID,))
+
+                                # Step 2: Insert new tracker record for QC
+                                sql_insert_tracker = """
+                                    INSERT INTO mtl.case_tracker
+                                    (case_id, state, sub_state, start_ts, end_ts, audit_log, update_user)
+                                    VALUES
+                                    (%s, 'Review', 'Case QC In Progress', CURRENT_TIMESTAMP, '9999-12-31 00:00:00', 'function: engineer-referral-rejected', %s)
+                                """
+                                cursor.execute(sql_insert_tracker, (CASE_ID, UPDATE_USER))
+
+                            else:
+                                # Analyst submitted the referral
+                                sql_statement_rejected = """
+                                    UPDATE mtl.case_allocation
+                                    SET 
+                                        casestatusanalyst = 'IN_PROGRESS',
+                                        casestatusqc = NULL,
+                                        engineer_referral = 'Rejected'
+                                    WHERE case_id = %s
+                                """
+                                cursor.execute(sql_statement_rejected, (CASE_ID,))
+
+                                # Step 1: Close current case tracker record
+                                sql_close_tracker = """
+                                    UPDATE mtl.case_tracker 
+                                    SET end_ts = CURRENT_TIMESTAMP 
+                                    WHERE case_id = %s 
+                                    AND end_ts = '9999-12-31 00:00:00'
+                                """
+                                cursor.execute(sql_close_tracker, (CASE_ID,))
+
+                                # Step 2: Insert new tracker record for Analyst
+                                sql_insert_tracker = """
+                                    INSERT INTO mtl.case_tracker
+                                    (case_id, state, sub_state, start_ts, end_ts, audit_log, update_user)
+                                    VALUES
+                                    (%s, 'Review', 'Case Review In Progress', CURRENT_TIMESTAMP, '9999-12-31 00:00:00', 'function: engineer-referral-rejected', %s)
+                                """
+                                cursor.execute(sql_insert_tracker, (CASE_ID, UPDATE_USER))
    
         # Return a success response
         return func.HttpResponse(

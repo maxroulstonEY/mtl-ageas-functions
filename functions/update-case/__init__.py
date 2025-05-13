@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient 
@@ -65,7 +66,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 WHERE NOT EXISTS (SELECT 1 FROM mtl.CASE_TRACKER WHERE CASE_ID = %s AND END_TS = '9999-12-31 00:00:00' AND sub_state = 'Case Review In Progress')"""
      # QC
     elif case_complete and (access_level == 3 or access_level == 2):
-        UPDATE_STATUS_IN_CASE_ALLOC = f"UPDATE mtl.CASE_ALLOCATION SET casestatusqc = 'COMPLETED', qc_complete_ts = CASE WHEN qc_complete_ts IS NULL THEN CURRENT_TIMESTAMP ELSE qc_complete_ts END WHERE case_id = %s"
+        UPDATE_STATUS_IN_CASE_ALLOC = f"UPDATE mtl.CASE_ALLOCATION SET casestatusqc = 'COMPLETED', casestatusqa = 'NEW', qc_complete_ts = CASE WHEN qc_complete_ts IS NULL THEN CURRENT_TIMESTAMP ELSE qc_complete_ts END WHERE case_id = %s"
         UPDATE_CASE_TRACKER = f"""UPDATE mtl.CASE_TRACKER SET  END_TS = CURRENT_TIMESTAMP WHERE CASE_ID = %s AND END_TS = '9999-12-31 00:00:00'; 
                                 INSERT INTO mtl.CASE_TRACKER (CASE_ID, STATE, sub_state,  START_TS,  END_TS, audit_log, update_user)
                                 VALUES (%s, 'Review', 'Case QC Completed', CURRENT_TIMESTAMP, '9999-12-31 00:00:00', 'function: update-case', %s)"""
@@ -77,7 +78,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 WHERE NOT EXISTS (SELECT 1 FROM mtl.CASE_TRACKER WHERE CASE_ID = %s AND END_TS = '9999-12-31 00:00:00' AND sub_state = 'Case QC In Progress')"""
      # QA
     elif case_complete and (access_level == 9 or access_level == 10):
-        UPDATE_STATUS_IN_CASE_ALLOC = f"UPDATE mtl.CASE_ALLOCATION SET casestatusqa = 'COMPLETED', qa_complete_ts = CASE WHEN qa_complete_ts IS NULL THEN CURRENT_TIMESTAMP ELSE qa_complete_ts END WHERE case_id = %s"
+        UPDATE_STATUS_IN_CASE_ALLOC = f"UPDATE mtl.CASE_ALLOCATION SET casestatusqa = 'COMPLETED', casestatusctc = 'NEW', qa_complete_ts = CASE WHEN qa_complete_ts IS NULL THEN CURRENT_TIMESTAMP ELSE qa_complete_ts END WHERE case_id = %s"
         UPDATE_CASE_TRACKER = f"""UPDATE mtl.CASE_TRACKER SET  END_TS = CURRENT_TIMESTAMP WHERE CASE_ID = %s AND END_TS = '9999-12-31 00:00:00'; 
                                 INSERT INTO mtl.CASE_TRACKER (CASE_ID, STATE, sub_state,  START_TS,  END_TS, audit_log, update_user)
                                 VALUES (%s, 'Review', 'Case QA Completed', CURRENT_TIMESTAMP, '9999-12-31 00:00:00', 'function: update-case', %s)"""
@@ -101,7 +102,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 WHERE NOT EXISTS (SELECT 1 FROM mtl.CASE_TRACKER WHERE CASE_ID = %s AND END_TS = '9999-12-31 00:00:00' AND sub_state = 'Case CTC In Progress')"""
       # Engineer
     elif case_complete and access_level == 8:
-        UPDATE_STATUS_IN_CASE_ALLOC = f"UPDATE mtl.CASE_ALLOCATION SET casestatuser = 'COMPLETED', er_complete_ts = CURRENT_TIMESTAMP WHERE case_id = %s AND END_TS = '9999-12-31 00:00:00'"
+        UPDATE_STATUS_IN_CASE_ALLOC = f"UPDATE mtl.CASE_ALLOCATION SET casestatuser = 'COMPLETED', casestatusqc = 'NEW', er_complete_ts = CURRENT_TIMESTAMP WHERE case_id = %s AND END_TS = '9999-12-31 00:00:00'"
         UPDATE_CASE_TRACKER = f"""UPDATE mtl.CASE_TRACKER SET  END_TS = CURRENT_TIMESTAMP WHERE CASE_ID = %s AND END_TS = '9999-12-31 00:00:00'; 
                                 INSERT INTO mtl.CASE_TRACKER (CASE_ID, STATE, sub_state,  START_TS,  END_TS, audit_log, update_user)
                                 VALUES (%s, 'Review', 'Case Review Completed', CURRENT_TIMESTAMP, '9999-12-31 00:00:00', 'function: update-case', %s)"""         
@@ -119,7 +120,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     # Retrieve the secret containing the database credentials
     # For Azure, you would use Azure Key Vault to store and retrieve secrets
     credential = DefaultAzureCredential()
-    key_vault_url = "https://mtl-backend.vault.azure.net/"
+    key_vault_url = os.getenv('key_vault_name')
     secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 
