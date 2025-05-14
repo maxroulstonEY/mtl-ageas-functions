@@ -4,10 +4,15 @@
 
 name: Build and deploy Python project to Azure Function App - mtlapp-pp
 
+defaults:
+  run:
+    working-directory: functions
+
 on:
   push:
     branches:
       - main
+    
   workflow_dispatch:
 
 env:
